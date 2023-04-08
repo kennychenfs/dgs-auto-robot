@@ -34,7 +34,7 @@ message_list = []
 for i in lines:
     m = re.match(r"'G',[^\d]*(\d+),", i)
     if m is not None:
-        game_id_list.append(int(m.group(1)))  # saved in str type
+        game_id_list.append(m.group(1))  # saved in str type
         continue
     m = re.match(r"'M',[^\d]*(\d+),[^\,]*,'([^']*)',", i)
     if m is not None:
@@ -124,7 +124,7 @@ for info, sgf, game_id in zip(infos, sgfs, game_id_list):
     if sgf.find(";W[]\n;B[]") != -1 or sgf.find(";B[]\n;W[]") != -1:
         pass_games.append(game_id)
         continue
-    with open("/tmp/" + game_id, "w") as f:
+    with open(f"/tmp/{game_id}", "w") as f:
         f.write(sgf)
     games[game_id] = [info["move_id"], info["move_color"], info["move_opp"]]
 
@@ -132,12 +132,12 @@ for info, sgf, game_id in zip(infos, sgfs, game_id_list):
 def play(games, command):
     if games == {}:
         return
-    recommend_for_last_move = ""
+    commands = ""
     for game_id, (move_id, myturn, _) in games.items():
-        recommend_for_last_move += "loadsgf /tmp/" + game_id + "\n"
-        recommend_for_last_move += "genmove_debug " + myturn + "\n"
+        commands += f"loadsgf /tmp/{game_id}\n"
+        commands += f"genmove_debug {myturn}\n"
     with open(f"/tmp/dgs_bot_{bot_name}_commands", "w") as f:
-        f.write(recommend_for_last_move)
+        f.write(commands)
     with open(f"/tmp/dgs_bot_{bot_name}_commands", "r") as f:
         result = subprocess.Popen(
             command, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -186,11 +186,11 @@ def play(games, command):
             + "%"
         )
         recommend_for_last_move = stderr[
-            stderr.find("--  ", index) + 4 : stderr.find("\n", index)
+            stderr.find("--  ", index) + 4 : stderr.find("--  ", index) + 14
         ]
         recommends[ids[num]] = recommend_for_last_move.split()[1]
         num += 1
-    for line in stdout.split("\n"):
+    for line in stdout.splitlines():
         if line.strip("= ") == "":
             continue
         play_moves.append(line.strip("= "))
@@ -229,15 +229,19 @@ def play(games, command):
                 url = url[:-5]
         to_get.append([url, id])
 
-    print("\n".join(to_get))
+    print("\n".join([f"'{id}','{url}'" for url, id in to_get]))
     if using_ray:
 
         @ray.remote
-        def get(url, id):
+        def get(url):
             if requests.get(url, cookies=cookies).status_code == 200:
-                recommended[id] = recommends[id]
+                return True
+            return False
 
-        ray.get([get.remote(url, id) for url, id in to_get])
+        results = ray.get([get.remote(url) for url, _ in to_get])
+        for result, id in zip(results, ids):
+            if result:
+                recommended[id] = recommends[id]
     else:
         for url, id in to_get:
             if requests.get(url, cookies=cookies).status_code == 200:
