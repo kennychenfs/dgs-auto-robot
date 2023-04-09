@@ -9,23 +9,42 @@ try:
 except:
     using_ray = False
 import os
+import pickle
 import re
 import requests
 import subprocess
 
-r = requests.get(
-    f"https://www.dragongoserver.net/login.php?quick_mode=1&userid={userid}&passwd={passwd}"
-)
-cookies = r.cookies
 opps_to_recommend = []
 pass_games = []
 recommends = {}  # {game id:'Q16',...} All games are saved here
 
 with open(os.path.join(main_dir, f"dgs_recommended_{bot_name}"), "r") as f:
     recommended = eval(f.read())
-r = requests.get(
-    "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
-)
+
+
+def login_and_get_cookies():
+    r = requests.get(
+        f"https://www.dragongoserver.net/login.php?quick_mode=1&userid={userid}&passwd={passwd}"
+    )
+    with open(os.path.join(main_dir, f"dgs_cookies_{bot_name}.pkl"), "wb") as f:
+        pickle.dump(r.cookies, f)
+    return r.cookies
+
+
+try:
+    with open(os.path.join(main_dir, f"dgs_cookies_{bot_name}.pkl"), "rb") as f:
+        cookies = pickle.load(f)
+    r = requests.get(
+        "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
+    )
+    if r.status_code != 200:
+        raise Exception
+except:
+    print("Cookies expired or not found, logging in...")
+    cookies = login_and_get_cookies()
+    r = requests.get(
+        "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
+    )
 lines = r.text.splitlines()
 game_id_list = []
 message_id_to_remove = []
@@ -172,10 +191,8 @@ def play(games, command):
                     (
                         float(
                             stderr[
-                                stderr.find("W", index)
-                                + 1 : stderr.find("S", index)
-                                - 2
-                            ]
+                                stderr.find("W", index) + 1 : stderr.find("S", index)
+                            ].strip("c ")
                         )
                         + 100
                     )
