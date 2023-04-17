@@ -37,7 +37,7 @@ try:
     r = requests.get(
         "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
     )
-    if r.status_code != 200:
+    if f"[#Error: not_logged_in; quick_status.expired({userid})]" in r.text:
         raise Exception
 except:
     print("Cookies expired or not found, logging in...")
@@ -62,7 +62,7 @@ for i in lines:
         if message == "Game result":
             message_id_to_remove.append(message_id)
             end_game_message_list.append(message_id)
-        elif message == "Your waiting room game has been joined":
+        elif message == "Your waiting room game has been joined.":
             message_id_to_remove.append(message_id)
         elif message == "Game invitation accepted":
             message_id_to_remove.append(message_id)
