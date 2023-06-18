@@ -43,19 +43,10 @@ try:
     r = requests.get(
         "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
     )
-    if f"[#Error: not_logged_in; quick_status.expired({userid})]" in r.text:
+    if r.text.startswith("[#Error:"):
         raise Exception
 except:
-    print("Cookies expired or not found, logging in...")
-    cookies = login_and_get_cookies()
-    r = requests.get(
-        "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
-    )
-
-#if the result is something like [#Error: unknown_user; quick_status.find_player2()], retry logging in
-while f"[#Error:" in r.text:
-    print("Unknown user error, retrying login...")
-    print(f'r.text:\n{r.text}')
+    print("retrying login...")
     cookies = login_and_get_cookies()
     r = requests.get(
         "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
