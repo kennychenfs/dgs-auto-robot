@@ -11,6 +11,7 @@ except:
 import os
 import pickle
 import re
+import time
 import requests
 import subprocess
 
@@ -26,6 +27,11 @@ def login_and_get_cookies():
     r = requests.get(
         f"https://www.dragongoserver.net/login.php?quick_mode=1&userid={userid}&passwd={passwd}"
     )
+    if(r.status_code != 200):
+        print("Error logging in, retrying...")
+        print(r.text)
+        time.sleep(5)
+        return login_and_get_cookies()
     with open(os.path.join(main_dir, f"dgs_cookies_{bot_name}.pkl"), "wb") as f:
         pickle.dump(r.cookies, f)
     return r.cookies
@@ -45,6 +51,16 @@ except:
     r = requests.get(
         "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
     )
+
+#if the result is something like [#Error: unknown_user; quick_status.find_player2()], retry logging in
+while f"[#Error:" in r.text:
+    print("Unknown user error, retrying login...")
+    print(f'r.text:\n{r.text}')
+    cookies = login_and_get_cookies()
+    r = requests.get(
+        "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
+    )
+
 lines = r.text.splitlines()
 game_id_list = []
 message_id_to_remove = []
