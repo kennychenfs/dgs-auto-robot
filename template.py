@@ -1,3 +1,7 @@
+# This python script is for KataGo. You might need to change some of the code to make it work for other bots.
+import io
+import infoProcess
+import sgfProcess
 using_ray = True
 main_dir = "/home/kenny/Desktop/"
 bot_name = "katago"
@@ -19,9 +23,17 @@ opps_to_recommend = []
 pass_games = []
 recommends = {}  # {game id:'Q16',...} All games are saved here
 
-with open(os.path.join(main_dir, f"dgs_recommended_{bot_name}"), "r") as f:
-    recommended = eval(f.read())
+if os.path.exists(os.path.join(main_dir, 'dgs_bots', bot_name, f"dgs_recommended")):
+    with open(os.path.join(main_dir, 'dgs_bots', bot_name, f"dgs_recommended"), "r") as f:
+        recommended = eval(f.read())
+else:
+    recommended = []
 
+if os.path.exists(os.path.join(main_dir, 'dgs_bots', bot_name, f"lastProcessedFinishedGameID")):
+    with open(os.path.join(main_dir, 'dgs_bots', bot_name, f"lastProcessedFinishedGameID"), "r") as f:
+        lastProcessedFinishedGameID = int(f.read())
+else:
+    lastProcessedFinishedGameID = None
 
 def login_and_get_cookies():
     r = requests.get(
@@ -36,6 +48,7 @@ def login_and_get_cookies():
         pickle.dump(r.cookies, f)
     return r.cookies
 
+MYID = eval(requests.get('https://www.dragongoserver.net/quick_do.php?obj=user&cmd=info').text)['id']
 
 try:
     with open(os.path.join(main_dir, f"dgs_cookies_{bot_name}.pkl"), "rb") as f:
@@ -51,6 +64,36 @@ except:
     r = requests.get(
         "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
     )
+
+if os.path.exists(os.path.join(main_dir, 'dgs_bots', bot_name, f"searchInfo")):
+    searchInfo = infoProcess.loadInfo(os.path.join(main_dir, 'dgs_bots', bot_name, f"searchInfo"))
+else:
+    searchInfo = {}
+
+def processFinishedGames():
+    # Try process finished games
+
+    finishedGames = eval(requests.get('https://www.dragongoserver.net/quick_do.php?obj=game&cmd=list&view=finished', cookies=cookies).text)
+    assert(finishedGames['list_header'][0]=='id')
+    finishedIDs = [finishedGames['list_result'][i][0] for i in range(len(finishedGames['list_result']))]
+    blackIDIndex = finishedGames['list_header'].index('black_user.id')
+    whiteIDIndex = finishedGames['list_header'].index('white_user.id')
+    blackIDs = [finishedGames['list_result'][i][blackIDIndex] for i in range(len(finishedGames['list_result']))]
+    whiteIDs = [finishedGames['list_result'][i][whiteIDIndex] for i in range(len(finishedGames['list_result']))]
+    for gameID, blackID, whiteID in zip(finishedIDs, blackIDs, whiteIDs):
+        if gameID == lastProcessedFinishedGameID:
+            break
+        sgf = sgfProcess.downloadsgf(gameID) 
+        sgf.addInfo(searchInfo)
+        sstream = io.StringIO('')
+        sgf.recursivePrintSgf(sstream)
+        subject = f"Game {gameID} analysis from bot {bot_name}"
+        message = f'The bot {bot_name} has collected search information while playing the game {gameID} with you and has created a sgf. The main branch of the sgf contains the winrate and lead for each of the bot\'s moves as well as recommend for your moves. Copy the sgf below and paste it into any viewer to see the analysis. If you have any advice about this feature, please drop me a mail.\n\n'
+        message += sstream.read()
+        if blackID == MYID:
+            requests.get(f"https://www.dragongoserver.net/quick_do.php?obj=message&cmd=send_msg&ouid={whiteID}&subj={subject}&msg={message}", cookies=cookies)
+        else:
+            requests.get(f"https://www.dragongoserver.net/quick_do.php?obj=message&cmd=send_msg&ouid={blackID}&subj={subject}&msg={message}", cookies=cookies)
 
 lines = r.text.splitlines()
 game_id_list = []
@@ -152,14 +195,20 @@ for info, sgf, game_id in zip(infos, sgfs, game_id_list):
         continue
     with open(f"/tmp/{game_id}", "w") as f:
         f.write(sgf)
-    games[game_id] = [info["move_id"], info["move_color"], info["move_opp"]]
+    games[game_id] = [
+        info["move_id"],
+        info["move_color"],
+        info["move_opp"],
+        info["size"],
+        info["handicap"],
+    ]
 
 
 def play(games, command):
     if games == {}:
         return
     commands = ""
-    for game_id, (move_id, myturn, _) in games.items():
+    for game_id, (move_id, myturn, _, _, _) in games.items():
         commands += f"loadsgf /tmp/{game_id}\n"
         commands += f"genmove_debug {myturn}\n"
     with open(f"/tmp/dgs_bot_{bot_name}_commands", "w") as f:
@@ -222,6 +271,7 @@ def play(games, command):
     print(winrates)
     to_get = []
     for id, play, winrate, lead in zip(ids, play_moves, winrates, leads):
+        infoProcess.addInfo(searchInfo, id, games[id][0]+1-games[id][4], winrate, lead, recommends[id])
         if lead >= 0:  # katago's output means how much it leads
             lead = "it leads by " + str(lead).strip()
         else:
@@ -271,6 +321,7 @@ def play(games, command):
             if requests.get(url, cookies=cookies).status_code == 200:
                 recommended[id] = recommends[id]
 
+processFinishedGames()
 
 play(games, "your command here")
 with open(os.path.join(main_dir, f"dgs_recommended_{bot_name}"), "w") as f:
