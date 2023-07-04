@@ -116,7 +116,7 @@ def processFinishedGames():
         if gameID == lastProcessedFinishedGameID:
             break
         sgf = sgfProcess.downloadsgf(gameID)
-        sgf.addInfo(searchInfo)
+        sgfProcess.addInfo(sgf, searchInfo)
         sstream = io.StringIO("")
         sgf.recursivePrintSgf(sstream)
         subject = f"Game {gameID} analysis from bot {bot_name}"
