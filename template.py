@@ -374,6 +374,11 @@ play(games, "your command here")
 with open(os.path.join(main_dir, f"dgs_recommended_{bot_name}"), "w") as f:
     f.write(str(recommended))
 
+# save search info
+infoProcess.saveInfo(
+    searchInfo, os.path.join(main_dir, "dgs_bots", bot_name, f"searchInfo")
+)
+
 bg = "\x1b[48;5;"
 color = "\x1b[38;5;"
 end = "m"
