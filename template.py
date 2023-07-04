@@ -1,7 +1,16 @@
 # This python script is for KataGo. You might need to change some of the code to make it work for other bots.
 import io
+import os
+import pickle
+import re
+import subprocess
+import time
+
+import requests
+
 import infoProcess
 import sgfProcess
+
 using_ray = True
 main_dir = "/home/kenny/Desktop/"
 bot_name = "katago"
@@ -12,34 +21,36 @@ try:
     import ray
 except:
     using_ray = False
-import os
-import pickle
-import re
-import time
-import requests
-import subprocess
 
 opps_to_recommend = []
 pass_games = []
 recommends = {}  # {game id:'Q16',...} All games are saved here
 
-if os.path.exists(os.path.join(main_dir, 'dgs_bots', bot_name, f"dgs_recommended")):
-    with open(os.path.join(main_dir, 'dgs_bots', bot_name, f"dgs_recommended"), "r") as f:
+if os.path.exists(os.path.join(main_dir, "dgs_bots", bot_name, f"dgs_recommended")):
+    with open(
+        os.path.join(main_dir, "dgs_bots", bot_name, f"dgs_recommended"), "r"
+    ) as f:
         recommended = eval(f.read())
 else:
     recommended = []
 
-if os.path.exists(os.path.join(main_dir, 'dgs_bots', bot_name, f"lastProcessedFinishedGameID")):
-    with open(os.path.join(main_dir, 'dgs_bots', bot_name, f"lastProcessedFinishedGameID"), "r") as f:
+if os.path.exists(
+    os.path.join(main_dir, "dgs_bots", bot_name, f"lastProcessedFinishedGameID")
+):
+    with open(
+        os.path.join(main_dir, "dgs_bots", bot_name, f"lastProcessedFinishedGameID"),
+        "r",
+    ) as f:
         lastProcessedFinishedGameID = int(f.read())
 else:
     lastProcessedFinishedGameID = None
+
 
 def login_and_get_cookies():
     r = requests.get(
         f"https://www.dragongoserver.net/login.php?quick_mode=1&userid={userid}&passwd={passwd}"
     )
-    if(r.status_code != 200):
+    if r.status_code != 200:
         print("Error logging in, retrying...")
         print(r.text)
         time.sleep(5)
@@ -48,7 +59,11 @@ def login_and_get_cookies():
         pickle.dump(r.cookies, f)
     return r.cookies
 
-MYID = eval(requests.get('https://www.dragongoserver.net/quick_do.php?obj=user&cmd=info').text)['id']
+
+# replace this after you get the bot's id
+MYID = eval(
+    requests.get("https://www.dragongoserver.net/quick_do.php?obj=user&cmd=info").text
+)["id"]
 
 try:
     with open(os.path.join(main_dir, f"dgs_cookies_{bot_name}.pkl"), "rb") as f:
@@ -65,35 +80,59 @@ except:
         "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
     )
 
-if os.path.exists(os.path.join(main_dir, 'dgs_bots', bot_name, f"searchInfo")):
-    searchInfo = infoProcess.loadInfo(os.path.join(main_dir, 'dgs_bots', bot_name, f"searchInfo"))
+if os.path.exists(os.path.join(main_dir, "dgs_bots", bot_name, f"searchInfo")):
+    searchInfo = infoProcess.loadInfo(
+        os.path.join(main_dir, "dgs_bots", bot_name, f"searchInfo")
+    )
 else:
     searchInfo = {}
+
 
 def processFinishedGames():
     # Try process finished games
 
-    finishedGames = eval(requests.get('https://www.dragongoserver.net/quick_do.php?obj=game&cmd=list&view=finished', cookies=cookies).text)
-    assert(finishedGames['list_header'][0]=='id')
-    finishedIDs = [finishedGames['list_result'][i][0] for i in range(len(finishedGames['list_result']))]
-    blackIDIndex = finishedGames['list_header'].index('black_user.id')
-    whiteIDIndex = finishedGames['list_header'].index('white_user.id')
-    blackIDs = [finishedGames['list_result'][i][blackIDIndex] for i in range(len(finishedGames['list_result']))]
-    whiteIDs = [finishedGames['list_result'][i][whiteIDIndex] for i in range(len(finishedGames['list_result']))]
+    finishedGames = eval(
+        requests.get(
+            "https://www.dragongoserver.net/quick_do.php?obj=game&cmd=list&view=finished",
+            cookies=cookies,
+        ).text
+    )
+    assert finishedGames["list_header"][0] == "id"
+    finishedIDs = [
+        finishedGames["list_result"][i][0]
+        for i in range(len(finishedGames["list_result"]))
+    ]
+    blackIDIndex = finishedGames["list_header"].index("black_user.id")
+    whiteIDIndex = finishedGames["list_header"].index("white_user.id")
+    blackIDs = [
+        finishedGames["list_result"][i][blackIDIndex]
+        for i in range(len(finishedGames["list_result"]))
+    ]
+    whiteIDs = [
+        finishedGames["list_result"][i][whiteIDIndex]
+        for i in range(len(finishedGames["list_result"]))
+    ]
     for gameID, blackID, whiteID in zip(finishedIDs, blackIDs, whiteIDs):
         if gameID == lastProcessedFinishedGameID:
             break
-        sgf = sgfProcess.downloadsgf(gameID) 
+        sgf = sgfProcess.downloadsgf(gameID)
         sgf.addInfo(searchInfo)
-        sstream = io.StringIO('')
+        sstream = io.StringIO("")
         sgf.recursivePrintSgf(sstream)
         subject = f"Game {gameID} analysis from bot {bot_name}"
-        message = f'The bot {bot_name} has collected search information while playing the game {gameID} with you and has created a sgf. The main branch of the sgf contains the winrate and lead for each of the bot\'s moves as well as recommend for your moves. Copy the sgf below and paste it into any viewer to see the analysis. If you have any advice about this feature, please drop me a mail.\n\n'
+        message = f"The bot {bot_name} has collected search information while playing the game {gameID} with you and has created a sgf. The main branch of the sgf contains the winrate and lead for each of the bot's moves as well as recommend for your moves. Copy the sgf below and paste it into any viewer to see the analysis. If you have any advice about this feature, please drop me a mail.\n\n"
         message += sstream.read()
         if blackID == MYID:
-            requests.get(f"https://www.dragongoserver.net/quick_do.php?obj=message&cmd=send_msg&ouid={whiteID}&subj={subject}&msg={message}", cookies=cookies)
+            requests.get(
+                f"https://www.dragongoserver.net/quick_do.php?obj=message&cmd=send_msg&ouid={whiteID}&subj={subject}&msg={message}",
+                cookies=cookies,
+            )
         else:
-            requests.get(f"https://www.dragongoserver.net/quick_do.php?obj=message&cmd=send_msg&ouid={blackID}&subj={subject}&msg={message}", cookies=cookies)
+            requests.get(
+                f"https://www.dragongoserver.net/quick_do.php?obj=message&cmd=send_msg&ouid={blackID}&subj={subject}&msg={message}",
+                cookies=cookies,
+            )
+
 
 lines = r.text.splitlines()
 game_id_list = []
@@ -271,7 +310,14 @@ def play(games, command):
     print(winrates)
     to_get = []
     for id, play, winrate, lead in zip(ids, play_moves, winrates, leads):
-        infoProcess.addInfo(searchInfo, id, games[id][0]+1-games[id][4], winrate, lead, recommends[id])
+        infoProcess.addInfo(
+            searchInfo,
+            id,
+            games[id][0] + 1 - games[id][4],
+            winrate,
+            lead,
+            recommends[id],
+        )
         if lead >= 0:  # katago's output means how much it leads
             lead = "it leads by " + str(lead).strip()
         else:
@@ -320,6 +366,7 @@ def play(games, command):
         for url, id in to_get:
             if requests.get(url, cookies=cookies).status_code == 200:
                 recommended[id] = recommends[id]
+
 
 processFinishedGames()
 
