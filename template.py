@@ -26,24 +26,8 @@ opps_to_recommend = []
 pass_games = []
 recommends = {}  # {game id:'Q16',...} All games are saved here
 
-if os.path.exists(os.path.join(main_dir, "dgs_bots", bot_name, f"dgs_recommended")):
-    with open(
-        os.path.join(main_dir, "dgs_bots", bot_name, f"dgs_recommended"), "r"
-    ) as f:
-        recommended = eval(f.read())
-else:
-    recommended = []
-
-if os.path.exists(
-    os.path.join(main_dir, "dgs_bots", bot_name, f"lastProcessedFinishedGameID")
-):
-    with open(
-        os.path.join(main_dir, "dgs_bots", bot_name, f"lastProcessedFinishedGameID"),
-        "r",
-    ) as f:
-        lastProcessedFinishedGameID = int(f.read())
-else:
-    lastProcessedFinishedGameID = None
+with open(os.path.join(main_dir, "dgs_bots", bot_name, f"dgs_recommended"), "r") as f:
+    recommended = eval(f.read())
 
 
 def login_and_get_cookies():
@@ -55,18 +39,20 @@ def login_and_get_cookies():
         print(r.text)
         time.sleep(5)
         return login_and_get_cookies()
-    with open(os.path.join(main_dir, f"dgs_cookies_{bot_name}.pkl"), "wb") as f:
+    with open(
+        os.path.join(main_dir, "dgs_bots", bot_name, f"dgs_cookies.pkl"), "wb"
+    ) as f:
         pickle.dump(r.cookies, f)
     return r.cookies
 
 
 # replace this after you get the bot's id
-MYID = eval(
-    requests.get("https://www.dragongoserver.net/quick_do.php?obj=user&cmd=info").text
-)["id"]
+MYID = "SET bot's ID HERE"
 
 try:
-    with open(os.path.join(main_dir, f"dgs_cookies_{bot_name}.pkl"), "rb") as f:
+    with open(
+        os.path.join(main_dir, "dgs_bots", bot_name, f"dgs_cookies.pkl"), "rb"
+    ) as f:
         cookies = pickle.load(f)
     r = requests.get(
         "https://www.dragongoserver.net/quick_status.php?quick_mode=1", cookies=cookies
@@ -85,10 +71,16 @@ if os.path.exists(os.path.join(main_dir, "dgs_bots", bot_name, f"searchInfo")):
         os.path.join(main_dir, "dgs_bots", bot_name, f"searchInfo")
     )
 else:
+    os.system(f'touch {os.path.join(main_dir, "dgs_bots", bot_name, f"searchInfo")}')
     searchInfo = {}
 
 
 def processFinishedGames():
+    with open(
+        os.path.join(main_dir, "dgs_bots", bot_name, f"lastProcessedFinishedGameID"),
+        "r",
+    ) as f:
+        lastProcessedFinishedGameID = f.read().strip()
     # Try process finished games
 
     finishedGames = eval(
@@ -99,29 +91,30 @@ def processFinishedGames():
     )
     assert finishedGames["list_header"][0] == "id"
     finishedIDs = [
-        finishedGames["list_result"][i][0]
+        str(finishedGames["list_result"][i][0])
         for i in range(len(finishedGames["list_result"]))
     ]
     blackIDIndex = finishedGames["list_header"].index("black_user.id")
     whiteIDIndex = finishedGames["list_header"].index("white_user.id")
     blackIDs = [
-        finishedGames["list_result"][i][blackIDIndex]
+        str(finishedGames["list_result"][i][blackIDIndex])
         for i in range(len(finishedGames["list_result"]))
     ]
     whiteIDs = [
-        finishedGames["list_result"][i][whiteIDIndex]
+        str(finishedGames["list_result"][i][whiteIDIndex])
         for i in range(len(finishedGames["list_result"]))
     ]
+    last = None
     for gameID, blackID, whiteID in zip(finishedIDs, blackIDs, whiteIDs):
         if gameID == lastProcessedFinishedGameID:
             break
         sgf = sgfProcess.downloadsgf(gameID)
-        sgfProcess.addInfo(sgf, searchInfo)
+        sgfProcess.addInfo(sgf, searchInfo[gameID])
         sstream = io.StringIO("")
         sgf.recursivePrintSgf(sstream)
         subject = f"Game {gameID} analysis from bot {bot_name}"
-        message = f"The bot {bot_name} has collected search information while playing the game {gameID} with you and has created a sgf. The main branch of the sgf contains the winrate and lead for each of the bot's moves as well as recommend for your moves. Copy the sgf below and paste it into any viewer to see the analysis. If you have any advice about this feature, please drop me a mail.\n\n"
-        message += sstream.read()
+        message = f"The bot {bot_name} has collected search information while playing the game {gameID} with you and has created a sgf. The main branch of the sgf contains the winrate and lead for each of the bot's moves as well as recommend for your moves. Copy the sgf below and paste it into any SGF viewer to see the analysis. If you have any advice about this feature, please drop me a mail.\n\n"
+        message += sstream.getvalue()
         if blackID == MYID:
             requests.get(
                 f"https://www.dragongoserver.net/quick_do.php?obj=message&cmd=send_msg&ouid={whiteID}&subj={subject}&msg={message}",
@@ -132,6 +125,16 @@ def processFinishedGames():
                 f"https://www.dragongoserver.net/quick_do.php?obj=message&cmd=send_msg&ouid={blackID}&subj={subject}&msg={message}",
                 cookies=cookies,
             )
+        # Remove gameID from searchInfo
+        del searchInfo[gameID]
+        last = gameID
+    if last is not None:
+        lastProcessedFinishedGameID = last
+    with open(
+        os.path.join(main_dir, "dgs_bots", bot_name, f"lastProcessedFinishedGameID"),
+        "w",
+    ) as f:
+        f.write(str(lastProcessedFinishedGameID))
 
 
 lines = r.text.splitlines()
@@ -178,6 +181,7 @@ if message_id_to_remove != []:
 # start
 print(f"{bot_name} is running, game list:", game_id_list)
 if game_id_list == []:
+    processFinishedGames()
     exit(0)
 games = {}
 if using_ray:
@@ -314,7 +318,7 @@ def play(games, command):
             searchInfo,
             id,
             games[id][0] + 1 - games[id][4],
-            winrate,
+            winrate[:-1],  # to exclude the % sign
             lead,
             recommends[id],
         )
@@ -371,7 +375,7 @@ def play(games, command):
 processFinishedGames()
 
 play(games, "your command here")
-with open(os.path.join(main_dir, f"dgs_recommended_{bot_name}"), "w") as f:
+with open(os.path.join(main_dir, "dgs_bots", bot_name, f"dgs_recommended"), "w") as f:
     f.write(str(recommended))
 
 # save search info

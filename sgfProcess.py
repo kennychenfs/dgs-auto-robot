@@ -1,12 +1,14 @@
 # Download finished game sgf and add previously saved assessments to sgf
+import re
 import requests
 
 
 class Sgf:
-    def __init__(self, rootNode=None, headInfo=None, lastInfo=None):
+    def __init__(self, rootNode=None, headInfo=None, lastInfo=None, size=None):
         self.rootNode = rootNode
         self.headInfo = headInfo  # string in sgf before first move
         self.lastInfo = lastInfo  # string in sgf after last move
+        self.size = size
 
     def recursivePrintSgf(self, file):
         file.write(self.headInfo)
@@ -64,23 +66,14 @@ def parseLocString(loc, boardSize):
     return x + y
 
 
-def parseSgfLoc(s):
-    # do not support parse comment
-    # s looks like 'B[ab]'
-    # return SgfNode
-    if s[0] == "B":
-        color = "B"
-    elif s[0] == "W":
-        color = "W"
-    else:
-        raise Exception(f"Invalid sgf loc string: {s}")
-    loc = parseLocString(s[2:-1], 19)
-    return SgfNode(loc, color)
-
-
 def parseSgf(s):
     # s is the content of sgf file
     # return Sgf object
+
+    # Extract board size from SGF file
+    size_match = re.search(r"SZ\[(\d+)\]", s)
+    assert size_match is not None
+    size = int(size_match.group(1))
 
     secondSemicolonIndex = s.find(";", s.find(";") + 1)
     # the line of the second semicolon looks like ";B[pd]" or ";MN[1]W[cn]"
@@ -113,7 +106,8 @@ def parseSgf(s):
         else:
             lastInfo = "\n".join(s[i:])
             break
-    return Sgf(rootNode, headInfo, lastInfo)
+
+    return Sgf(rootNode, headInfo, lastInfo, size)
 
 
 def downloadsgf(id):
@@ -132,7 +126,8 @@ def readsgf(filename):
 def addInfo(sgf, info):
     # info = [{'winrate':'100', 'lead':'100', 'recommend':'Q16'},None,{...},...]
     node = sgf.rootNode
-    for i in range(min(sgf.depth(), len(info))):
+    loopTimes = min(sgf.depth(), len(info))
+    for i in range(loopTimes):
         if info[i] == None:
             node = node.children[0]
             continue
@@ -144,10 +139,12 @@ def addInfo(sgf, info):
                 cmt += " "
             cmt += f'{info[i]["lead"]}'
         if "recommend" in info[i]:
-            loc = parseLocString(info[i]["recommend"], 19)
-            node.children.append(SgfNode(loc, node.children[0].color))
+            loc = parseLocString(info[i]["recommend"], sgf.size)
+            color = "B" if node.color == "W" else "W"
+            node.children.append(SgfNode(loc, color))
         node.comment = cmt
-        node = node.children[0]
+        if i != loopTimes - 1:
+            node = node.children[0]
     return sgf
 
 

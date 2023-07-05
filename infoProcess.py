@@ -12,9 +12,9 @@ def addInfo(info, gameID, moveIDMinusHandicap, winrate=None, lead=None, recommen
     if info[gameID][moveIDMinusHandicap] == None:
         info[gameID][moveIDMinusHandicap] = {}
     if winrate != None:
-        info[gameID][moveIDMinusHandicap]["winrate"] = str(round(winrate))
+        info[gameID][moveIDMinusHandicap]["winrate"] = str(round(float(winrate)))
     if lead != None:
-        info[gameID][moveIDMinusHandicap]["lead"] = str(round(lead, 1))
+        info[gameID][moveIDMinusHandicap]["lead"] = str(round(float(lead), 1))
     if recommend != None:
         info[gameID][moveIDMinusHandicap]["recommend"] = str(recommend)
     return info
